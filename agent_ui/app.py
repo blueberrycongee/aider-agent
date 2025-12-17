@@ -137,7 +137,10 @@ def get_repo_issues(task_id):
     
     try:
         # 从 URL 解析 owner 和 repo
-        parts = task.repo_url.rstrip('/').rstrip('.git').split('/')
+        url = task.repo_url.rstrip('/')
+        if url.endswith('.git'):
+            url = url[:-4]
+        parts = url.split('/')
         owner, repo_name = parts[-2], parts[-1]
         
         # 获取 Issues
@@ -174,7 +177,10 @@ def fix_issue(task_id, issue_number):
         return jsonify({'error': '未配置 GITHUB_TOKEN'}), 400
     
     try:
-        parts = task.repo_url.rstrip('/').rstrip('.git').split('/')
+        url = task.repo_url.rstrip('/')
+        if url.endswith('.git'):
+            url = url[:-4]
+        parts = url.split('/')
         owner, repo_name = parts[-2], parts[-1]
         
         issues = client.get_issues(owner, repo_name, limit=100)
@@ -298,7 +304,10 @@ def commit_fix(task_id, issue_number):
     issue = fix_data.get('issue', {})
     
     client = get_github_client()
-    parts = task.repo_url.rstrip('/').rstrip('.git').split('/')
+    url = task.repo_url.rstrip('/')
+    if url.endswith('.git'):
+        url = url[:-4]
+    parts = url.split('/')
     owner, repo_name = parts[-2], parts[-1]
     
     from agent_core.fix_workflow import FixWorkflow, FixStatus

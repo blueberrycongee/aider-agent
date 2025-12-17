@@ -63,12 +63,18 @@ class TaskRunner:
     
     def _get_repo_name(self, url: str) -> str:
         """从 URL 提取仓库名"""
-        return url.rstrip('/').rstrip('.git').split('/')[-1]
+        url = url.rstrip('/')
+        if url.endswith('.git'):
+            url = url[:-4]
+        return url.split('/')[-1]
     
     def _parse_repo_url(self, url: str) -> tuple[str, str]:
         """解析仓库 URL，返回 (owner, repo_name)"""
         # https://github.com/owner/repo.git
-        parts = url.rstrip('/').rstrip('.git').split('/')
+        url = url.rstrip('/')
+        if url.endswith('.git'):
+            url = url[:-4]
+        parts = url.split('/')
         return parts[-2], parts[-1]
     
     def _load_tasks(self):
