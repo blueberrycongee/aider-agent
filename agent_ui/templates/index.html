@@ -620,17 +620,19 @@
         
         function renderRepos() {
             const list = document.getElementById('repoList');
-            const empty = document.getElementById('emptyState');
             const repoIds = Object.keys(repos);
             
             if (repoIds.length === 0) {
-                empty.style.display = 'block';
-                list.innerHTML = '';
-                list.appendChild(empty);
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                        </svg>
+                        <p>还没有添加仓库<br>输入 GitHub 仓库地址开始</p>
+                    </div>
+                `;
                 return;
             }
-            
-            empty.style.display = 'none';
             
             list.innerHTML = repoIds.map(id => {
                 const repo = repos[id];
@@ -695,12 +697,26 @@
             if (e.key === 'Enter') addRepo();
         });
         
+        // 从后端加载仓库列表
+        function loadRepos() {
+            fetch('/api/repos')
+            .then(res => res.json())
+            .then(data => {
+                data.forEach(repo => {
+                    repos[repo.id] = repo;
+                });
+                renderRepos();
+            })
+            .catch(() => {});
+        }
+        
         // 初始化
         fetchStatus();
-        renderRepos();
+        loadRepos();
         
-        // 定时刷新状态
+        // 定时刷新状态和仓库列表
         setInterval(fetchStatus, 30000);
+        setInterval(loadRepos, 5000);  // 每5秒刷新仓库状态
     </script>
 </body>
 </html>
