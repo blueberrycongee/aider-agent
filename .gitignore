@@ -25,3 +25,4 @@ Thumbs.db
 
 # Aider venv
 aider_venv/
+.aider*
