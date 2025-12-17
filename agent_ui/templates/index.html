@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aider Agent - 仓库管理</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .add-repo-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .input-group input {
+            flex: 1;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        
+        .input-group input:focus {
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 0 0 2px #7c3aed;
+        }
+        
+        .input-group input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(90deg, #7c3aed, #00d4ff);
+            color: #fff;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.4);
+        }
+        
+        .btn-start {
+            background: linear-gradient(90deg, #10b981, #059669);
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+        
+        .btn-start:hover {
+            box-shadow: 0 5px 20px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-start:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-delete {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            padding: 10px 16px;
+            font-size: 14px;
+        }
+        
+        .btn-delete:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+        
+        .repo-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .repo-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
+        
+        .repo-card:hover {
+            border-color: rgba(124, 58, 237, 0.5);
+        }
+        
+        .repo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .repo-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .repo-url {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.875rem;
+            margin-top: 4px;
+            word-break: break-all;
+        }
+        
+        .repo-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-pending { background: rgba(107, 114, 128, 0.3); color: #9ca3af; }
+        .status-cloning { background: rgba(59, 130, 246, 0.3); color: #60a5fa; }
+        .status-cloned { background: rgba(16, 185, 129, 0.3); color: #34d399; }
+        .status-reviewing { background: rgba(245, 158, 11, 0.3); color: #fbbf24; }
+        .status-fixing { background: rgba(168, 85, 247, 0.3); color: #c084fc; }
+        .status-completed { background: rgba(16, 185, 129, 0.3); color: #34d399; }
+        .status-error { background: rgba(239, 68, 68, 0.3); color: #f87171; }
+        
+        .status-message {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .output-section {
+            margin-top: 16px;
+        }
+        
+        .output-toggle {
+            color: #7c3aed;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+        
+        .output-content {
+            margin-top: 12px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Aider Agent</h1>
+        
+        <div class="add-repo-section">
+            <div class="input-group">
+                <input type="text" id="repoUrl" placeholder="输入 GitHub 仓库地址，例如：https://github.com/owner/repo">
+                <button class="btn btn-primary" onclick="addRepo()">添加仓库</button>
+            </div>
+        </div>
+        
+        <div class="repo-list" id="repoList">
+            <div class="empty-state" id="emptyState">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                <p>还没有添加仓库<br>输入 GitHub 仓库地址开始</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const repos = {};
+        
+        // 监听状态更新
+        socket.on('status_update', (data) => {
+            if (repos[data.id]) {
+                repos[data.id].status = data.status;
+                repos[data.id].message = data.message;
+                renderRepos();
+            }
+        });
+        
+        // 监听 Aider 输出
+        socket.on('aider_output', (data) => {
+            if (repos[data.id]) {
+                if (!repos[data.id].output) repos[data.id].output = '';
+                repos[data.id].output += data.line + '\n';
+                updateOutput(data.id);
+            }
+        });
+        
+        function addRepo() {
+            const input = document.getElementById('repoUrl');
+            const url = input.value.trim();
+            
+            if (!url) {
+                alert('请输入仓库地址');
+                return;
+            }
+            
+            fetch('/api/repos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            })
+            .then(res => res.json())
+            .then(repo => {
+                repos[repo.id] = repo;
+                input.value = '';
+                renderRepos();
+            })
+            .catch(err => alert('添加失败: ' + err));
+        }
+        
+        function startTask(id) {
+            fetch(`/api/repos/${id}/start`, { method: 'POST' })
+            .then(res => res.json())
+            .then(() => {
+                repos[id].status = 'cloning';
+                repos[id].message = '任务启动中...';
+                repos[id].output = '';
+                renderRepos();
+            })
+            .catch(err => alert('启动失败: ' + err));
+        }
+        
+        function deleteRepo(id) {
+            if (!confirm('确定删除这个仓库吗？')) return;
+            
+            fetch(`/api/repos/${id}`, { method: 'DELETE' })
+            .then(() => {
+                delete repos[id];
+                renderRepos();
+            });
+        }
+        
+        function toggleOutput(id) {
+            const el = document.getElementById(`output-${id}`);
+            if (el) {
+                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+        
+        function updateOutput(id) {
+            const el = document.getElementById(`output-content-${id}`);
+            if (el) {
+                el.textContent = repos[id].output || '';
+                el.scrollTop = el.scrollHeight;
+            }
+        }
+        
+        function getStatusText(status) {
+            const map = {
+                'pending': '等待中',
+                'cloning': '克隆中',
+                'cloned': '已克隆',
+                'reviewing': '审查中',
+                'fixing': '修复中',
+                'completed': '已完成',
+                'error': '错误'
+            };
+            return map[status] || status;
+        }
+        
+        function renderRepos() {
+            const list = document.getElementById('repoList');
+            const empty = document.getElementById('emptyState');
+            const repoIds = Object.keys(repos);
+            
+            if (repoIds.length === 0) {
+                empty.style.display = 'block';
+                list.innerHTML = '';
+                list.appendChild(empty);
+                return;
+            }
+            
+            empty.style.display = 'none';
+            
+            list.innerHTML = repoIds.map(id => {
+                const repo = repos[id];
+                const isRunning = ['cloning', 'reviewing', 'fixing'].includes(repo.status);
+                const hasOutput = repo.output && repo.output.length > 0;
+                
+                return `
+                    <div class="repo-card">
+                        <div class="repo-header">
+                            <div>
+                                <div class="repo-name">${repo.name}</div>
+                                <div class="repo-url">${repo.url}</div>
+                            </div>
+                            <div class="repo-actions">
+                                <span class="status-badge status-${repo.status}">
+                                    ${isRunning ? '<span class="spinner"></span>' : ''}
+                                    ${getStatusText(repo.status)}
+                                </span>
+                                <button class="btn btn-start" onclick="startTask('${id}')" ${isRunning ? 'disabled' : ''}>
+                                    ${isRunning ? '运行中...' : '开始任务'}
+                                </button>
+                                <button class="btn btn-delete" onclick="deleteRepo('${id}')">删除</button>
+                            </div>
+                        </div>
+                        ${repo.message ? `<div class="status-message">${repo.message}</div>` : ''}
+                        ${hasOutput ? `
+                            <div class="output-section">
+                                <span class="output-toggle" onclick="toggleOutput('${id}')">📋 查看 Aider 输出</span>
+                                <div id="output-${id}" style="display:none;">
+                                    <div class="output-content" id="output-content-${id}">${repo.output}</div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Enter 键添加仓库
+        document.getElementById('repoUrl').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addRepo();
+        });
+        
+        // 初始化
+        renderRepos();
+    </script>
+</body>
+</html>
