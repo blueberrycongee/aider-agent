@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .aider_wrapper import AiderWrapper
+from .storage import TaskStorage
 
 
 class TaskStatus(Enum):
@@ -35,12 +36,13 @@ class Task:
 
 
 class TaskRunner:
-    def __init__(self, work_dir: str = None):
+    def __init__(self, work_dir: str = None, auto_save: bool = True):
         """
         初始化任务调度器
         
         Args:
             work_dir: 工作目录，用于存放克隆的仓库
+            auto_save: 是否自动保存任务状态
         """
         if work_dir:
             self.work_dir = Path(work_dir)
@@ -51,6 +53,13 @@ class TaskRunner:
         self.tasks: Dict[str, Task] = {}
         self._task_counter = 0
         self._lock = threading.Lock()
+        self._auto_save = auto_save
+        
+        # 初始化存储
+        self._storage = TaskStorage()
+        
+        # 加载已保存的任务
+        self._load_tasks()
     
     def _get_repo_name(self, url: str) -> str:
         """从 URL 提取仓库名"""
@@ -61,6 +70,52 @@ class TaskRunner:
         # https://github.com/owner/repo.git
         parts = url.rstrip('/').rstrip('.git').split('/')
         return parts[-2], parts[-1]
+    
+    def _load_tasks(self):
+        """从存储加载任务"""
+        saved_tasks = self._storage.load_tasks()
+        
+        for task_id, task_data in saved_tasks.items():
+            try:
+                # 恢复状态枚举
+                status_str = task_data.get('status', 'pending')
+                try:
+                    status = TaskStatus(status_str)
+                except ValueError:
+                    status = TaskStatus.PENDING
+                
+                # 如果之前是运行中状态，恢复为已克隆（需要重新运行）
+                if status in [TaskStatus.CLONING, TaskStatus.REVIEWING, TaskStatus.FIXING]:
+                    status = TaskStatus.CLONED if task_data.get('local_path') else TaskStatus.PENDING
+                
+                task = Task(
+                    id=task_data['id'],
+                    repo_url=task_data['repo_url'],
+                    repo_name=task_data['repo_name'],
+                    status=status,
+                    local_path=task_data.get('local_path'),
+                    message=task_data.get('message', ''),
+                    output=task_data.get('output', ''),
+                    error=task_data.get('error', ''),
+                )
+                self.tasks[task_id] = task
+            except Exception as e:
+                print(f"恢复任务 {task_id} 失败: {e}")
+        
+        # 恢复任务计数器
+        self._task_counter = self._storage.get_last_task_id()
+        
+        if self.tasks:
+            print(f"已恢复 {len(self.tasks)} 个任务")
+    
+    def _save_tasks(self):
+        """保存任务到存储"""
+        if self._auto_save:
+            self._storage.save_tasks(self.tasks)
+    
+    def save(self):
+        """手动保存任务（公开方法）"""
+        self._storage.save_tasks(self.tasks)
     
     def create_task(self, repo_url: str) -> Task:
         """创建新任务"""
@@ -74,6 +129,7 @@ class TaskRunner:
                 repo_name=self._get_repo_name(repo_url)
             )
             self.tasks[task_id] = task
+            self._save_tasks()
             return task
     
     def get_task(self, task_id: str) -> Task:
@@ -133,6 +189,7 @@ class TaskRunner:
             if result.returncode == 0:
                 task.status = TaskStatus.CLONED
                 task.message = '克隆完成！'
+                self._save_tasks()
                 if on_status:
                     on_status(task_id, task.status, task.message)
                 return True
@@ -140,6 +197,7 @@ class TaskRunner:
                 task.status = TaskStatus.ERROR
                 task.error = result.stderr
                 task.message = f'克隆失败: {result.stderr}'
+                self._save_tasks()
                 if on_status:
                     on_status(task_id, task.status, task.message)
                 return False
@@ -148,6 +206,7 @@ class TaskRunner:
             task.status = TaskStatus.ERROR
             task.error = str(e)
             task.message = f'错误: {str(e)}'
+            self._save_tasks()
             if on_status:
                 on_status(task_id, task.status, task.message)
             return False
@@ -189,6 +248,7 @@ class TaskRunner:
                 task.status = TaskStatus.ERROR
                 task.message = f'审查失败，返回码: {code}'
             
+            self._save_tasks()
             if on_status:
                 on_status(task_id, task.status, task.message)
             
@@ -198,6 +258,7 @@ class TaskRunner:
             task.status = TaskStatus.ERROR
             task.error = str(e)
             task.message = f'Aider 错误: {str(e)}'
+            self._save_tasks()
             if on_status:
                 on_status(task_id, task.status, task.message)
             return False
@@ -228,3 +289,4 @@ class TaskRunner:
         """删除任务"""
         if task_id in self.tasks:
             del self.tasks[task_id]
+            self._save_tasks()
