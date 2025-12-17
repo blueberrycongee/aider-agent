@@ -147,6 +147,72 @@ class AiderWrapper:
         
         return self.run(message, on_output=on_output, auto_commit=False)
     
+    def review_diff(self, diff: str, on_output: Callable[[str], None] = None) -> tuple[int, str]:
+        """
+        审查代码更改（PR Review 风格）
+        
+        Args:
+            diff: git diff 内容
+            on_output: 输出回调
+        
+        Returns:
+            (返回码, 审查结果 JSON)
+        """
+        message = f"""你是一个代码审查员，请审查以下代码更改。
+
+## 审查准则
+
+判断是否为 Bug 的标准：
+- 会对代码的准确性、性能、安全性或可维护性产生实质影响
+- Bug 是具体且可操作的（不是泛泛的问题）
+- 修复 Bug 不需要超出代码库其他部分的严格程度
+- Bug 是在这次提交中引入的（不要标记已存在的问题）
+- 不要仅仅推测更改可能破坏其他部分，必须指出受影响的具体代码
+
+## 优先级定义
+
+- [P0] 必须立即修复，阻塞发布
+- [P1] 紧急，应在下个周期解决
+- [P2] 正常，最终需要修复
+- [P3] 低优先级，锦上添花
+
+## 评论准则
+
+- 清楚说明为什么是 Bug
+- 准确传达问题的严重性
+- 简洁，正文最多一段
+- 代码片段不超过 3 行
+- 使用事实性语气，不带指责
+
+## 代码更改
+
+```diff
+{diff}
+```
+
+## 输出格式
+
+请以 JSON 格式输出，包含：
+{{
+  "findings": [
+    {{
+      "title": "标题（不超过 80 字符）",
+      "body": "问题描述",
+      "priority": 0-3,
+      "confidence_score": 0.0-1.0,
+      "file": "文件路径",
+      "line": 行号
+    }}
+  ],
+  "overall_correctness": "patch is correct" | "patch is incorrect",
+  "overall_explanation": "总体评价（1-3句话）",
+  "overall_confidence_score": 0.0-1.0
+}}
+
+如果没有发现问题，findings 应为空数组。"""
+        
+        return self.run(message, on_output=on_output, auto_commit=False)
+    
     def fix_issue(self, issue_title: str, issue_body: str,
                   files: list = None,
                   on_output: Callable[[str], None] = None) -> tuple[int, str]:

@@ -233,6 +233,7 @@ def fix_issue(task_id, issue_number):
                     'issue': issue,
                     'branch': result.branch_name,
                     'diff': result.diff,
+                    'review': result.review,  # 代码审查结果
                     'success': result.success,
                     'error': result.error
                 }
@@ -266,7 +267,7 @@ def fix_issue(task_id, issue_number):
 
 @app.route('/api/repos/<task_id>/issues/<int:issue_number>/diff', methods=['GET'])
 def get_fix_diff(task_id, issue_number):
-    """获取修复的 diff"""
+    """获取修复的 diff 和审查结果"""
     fix_key = f"{task_id}_{issue_number}"
     
     if fix_key not in fix_tasks:
@@ -277,7 +278,8 @@ def get_fix_diff(task_id, issue_number):
         'diff': fix_data.get('diff', ''),
         'branch': fix_data.get('branch', ''),
         'status': fix_data.get('status', ''),
-        'message': fix_data.get('message', '')
+        'message': fix_data.get('message', ''),
+        'review': fix_data.get('review')  # 代码审查结果
     })
 
 

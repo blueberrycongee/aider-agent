@@ -32,6 +32,7 @@ class FixResult:
     status: FixStatus = FixStatus.PENDING
     branch_name: str = ''
     diff: str = ''
+    review: dict = None  # 代码审查结果
     pr_url: str = ''
     error: str = ''
     output: str = ''
@@ -282,15 +283,42 @@ Closes #{issue_number}
                 raise Exception(f"Aider 修复失败，返回码: {code}")
             log("✓ Aider 修复完成")
             
-            # Step 3: Aider 审查
-            update_status(FixStatus.REVIEWING, "Aider 正在审查修复...")
-            review_code, review_output = self.aider.review_code(on_output=_on_aider_output)
-            log("✓ 代码审查完成")
-            
-            # Step 4: 获取 diff
-            update_status(FixStatus.DIFF_READY, "获取代码更改...")
+            # Step 3: 获取 diff
+            update_status(FixStatus.REVIEWING, "获取代码更改...")
             result.diff = self.get_diff()
             log(f"=== Git Diff ===\n{result.diff}")
+            
+            # Step 4: Aider 审查修复（PR Review 风格）
+            if result.diff and result.diff != "No changes detected":
+                update_status(FixStatus.REVIEWING, "Aider 正在审查代码更改...")
+                review_code, review_output = self.aider.review_diff(result.diff, on_output=_on_aider_output)
+                log("✓ 代码审查完成")
+                
+                # 尝试解析审查结果
+                try:
+                    import json
+                    import re
+                    # 提取 JSON
+                    json_match = re.search(r'\{[\s\S]*\}', review_output)
+                    if json_match:
+                        review_result = json.loads(json_match.group())
+                        result.review = review_result
+                        
+                        # 如果有 P0/P1 问题，记录警告
+                        findings = review_result.get('findings', [])
+                        critical = [f for f in findings if f.get('priority', 3) <= 1]
+                        if critical:
+                            log(f"⚠ 发现 {len(critical)} 个高优先级问题")
+                            for f in critical:
+                                log(f"  - [P{f.get('priority', '?')}] {f.get('title', '未知问题')}")
+                        
+                        correctness = review_result.get('overall_correctness', '')
+                        log(f"审查结论: {correctness}")
+                except:
+                    pass  # 解析失败不影响流程
+            
+            # Step 5: 准备好 diff，等待用户确认
+            update_status(FixStatus.DIFF_READY, "修复完成，等待确认...")
             
             if not auto_commit:
                 # 等待用户确认

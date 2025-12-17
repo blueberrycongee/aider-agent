@@ -414,6 +414,80 @@
             border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
+        /* Review Section */
+        .review-section {
+            margin-bottom: 20px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+        
+        .review-section h4 {
+            margin: 0 0 12px 0;
+            font-size: 1rem;
+        }
+        
+        .review-verdict {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .verdict-pass {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+        }
+        
+        .verdict-fail {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+        
+        .review-explanation {
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin: 8px 0;
+        }
+        
+        .review-findings {
+            margin-top: 12px;
+        }
+        
+        .finding-item {
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 6px;
+            border-left: 3px solid;
+        }
+        
+        .finding-item.priority-0 { background: rgba(239, 68, 68, 0.15); border-color: #ef4444; }
+        .finding-item.priority-1 { background: rgba(249, 115, 22, 0.15); border-color: #f97316; }
+        .finding-item.priority-2 { background: rgba(234, 179, 8, 0.15); border-color: #eab308; }
+        .finding-item.priority-3 { background: rgba(107, 114, 128, 0.15); border-color: #6b7280; }
+        
+        .finding-priority {
+            font-weight: 700;
+            margin-right: 8px;
+        }
+        
+        .finding-title {
+            font-weight: 500;
+        }
+        
+        .finding-body {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin: 6px 0 0 0;
+        }
+        
+        .modal-body h4 {
+            margin: 16px 0 8px 0;
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
         .status-message {
             margin-top: 12px;
             padding: 12px;
@@ -707,6 +781,37 @@
                     return;
                 }
                 
+                // 渲染审查结果
+                let reviewHtml = '';
+                if (data.review) {
+                    const review = data.review;
+                    const findings = review.findings || [];
+                    const correctness = review.overall_correctness || '';
+                    const explanation = review.overall_explanation || '';
+                    
+                    reviewHtml = `
+                        <div class="review-section">
+                            <h4>🔍 AI 代码审查</h4>
+                            <div class="review-verdict ${correctness === 'patch is correct' ? 'verdict-pass' : 'verdict-fail'}">
+                                ${correctness === 'patch is correct' ? '✅ 审查通过' : '⚠️ 发现问题'}
+                            </div>
+                            <p class="review-explanation">${escapeHtml(explanation)}</p>
+                            ${findings.length > 0 ? `
+                                <div class="review-findings">
+                                    <strong>发现的问题：</strong>
+                                    ${findings.map(f => `
+                                        <div class="finding-item priority-${f.priority || 3}">
+                                            <span class="finding-priority">[P${f.priority || '?'}]</span>
+                                            <span class="finding-title">${escapeHtml(f.title || '')}</span>
+                                            <p class="finding-body">${escapeHtml(f.body || '')}</p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+                
                 // 创建模态框
                 const modal = document.createElement('div');
                 modal.id = 'diffModal';
@@ -721,6 +826,8 @@
                             <div class="diff-info">
                                 <span>分支: <code>${data.branch}</code></span>
                             </div>
+                            ${reviewHtml}
+                            <h4>📝 代码变更</h4>
                             <pre class="diff-content">${escapeHtml(data.diff)}</pre>
                         </div>
                         <div class="modal-footer">
