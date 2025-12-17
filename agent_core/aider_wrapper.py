@@ -45,8 +45,10 @@ class AiderWrapper:
         if not auto_commit:
             cmd.append('--no-auto-commits')
         
-        # 禁止打开浏览器
+        # 禁止打开浏览器和警告
         cmd.append('--no-show-release-notes')
+        cmd.append('--no-show-model-warnings')
+        cmd.append('--no-check-update')
         
         if files:
             for f in files:

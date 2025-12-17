@@ -750,6 +750,9 @@
             currentFix.repoId = repoId;
             currentFix.issueNumber = issueNumber;
             
+            // 存储当前修复的 issue 编号
+            repos[repoId].fixingIssue = issueNumber;
+            
             fetch(`/api/repos/${repoId}/issues/${issueNumber}/fix`, { method: 'POST' })
             .then(res => res.json())
             .then(data => {
@@ -931,7 +934,17 @@
                                 <button class="btn btn-delete" onclick="deleteRepo('${id}')">删除</button>
                             </div>
                         </div>
-                        ${repo.message ? `<div class="status-message">${repo.message}</div>` : ''}
+                        ${repo.message ? `
+                            <div class="status-message">
+                                ${repo.message}
+                                ${repo.message.includes('等待确认提交') && repo.fixingIssue ? `
+                                    <button class="btn btn-primary btn-small" style="margin-left: 12px;" 
+                                            onclick="showDiffModal('${id}', ${repo.fixingIssue})">
+                                        查看代码变更
+                                    </button>
+                                ` : ''}
+                            </div>
+                        ` : ''}
                         ${hasOutput ? `
                             <div class="output-section">
                                 <span class="output-toggle" onclick="toggleOutput('${id}')">📋 查看 Aider 输出</span>
