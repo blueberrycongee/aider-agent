@@ -18,8 +18,15 @@ class AiderWrapper:
             model: 使用的模型，如 'gpt-4', 'claude-3-sonnet' 等
         """
         self.repo_path = Path(repo_path)
-        self.model = model
+        self.model = model or os.getenv('AIDER_MODEL')
         self.process = None
+        
+        # 使用虚拟环境中的 aider
+        venv_aider = Path(__file__).parent.parent / 'aider_venv' / 'Scripts' / 'aider.exe'
+        if venv_aider.exists():
+            self.aider_cmd = str(venv_aider)
+        else:
+            self.aider_cmd = 'aider'
         
         if not self.repo_path.exists():
             raise ValueError(f"仓库路径不存在: {repo_path}")
@@ -27,7 +34,7 @@ class AiderWrapper:
     def _build_command(self, message: str, files: list = None, 
                        auto_commit: bool = True, yes: bool = True) -> list:
         """构建 Aider 命令"""
-        cmd = ['aider']
+        cmd = [self.aider_cmd]
         
         if self.model:
             cmd.extend(['--model', self.model])
@@ -37,6 +44,9 @@ class AiderWrapper:
         
         if not auto_commit:
             cmd.append('--no-auto-commits')
+        
+        # 禁止打开浏览器
+        cmd.append('--no-show-release-notes')
         
         if files:
             for f in files:
