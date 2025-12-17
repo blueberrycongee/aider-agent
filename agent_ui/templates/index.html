@@ -179,6 +179,154 @@
         .status-completed { background: rgba(16, 185, 129, 0.3); color: #34d399; }
         .status-error { background: rgba(239, 68, 68, 0.3); color: #f87171; }
         
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+        }
+        
+        .github-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+        }
+        
+        .github-status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .github-status .dot.connected { background: #34d399; }
+        .github-status .dot.disconnected { background: #f87171; }
+        
+        .issues-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .issues-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .issues-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+        }
+        
+        .issue-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .issue-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            gap: 12px;
+        }
+        
+        .issue-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .issue-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .issue-title a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+        
+        .issue-title a:hover {
+            text-decoration: underline;
+        }
+        
+        .issue-meta {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .issue-labels {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        
+        .issue-label {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            background: rgba(124, 58, 237, 0.3);
+            color: #c4b5fd;
+        }
+        
+        .difficulty-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        
+        .difficulty-1 { background: rgba(16, 185, 129, 0.3); color: #34d399; }
+        .difficulty-2 { background: rgba(52, 211, 153, 0.3); color: #6ee7b7; }
+        .difficulty-3 { background: rgba(251, 191, 36, 0.3); color: #fcd34d; }
+        .difficulty-4 { background: rgba(251, 146, 60, 0.3); color: #fdba74; }
+        .difficulty-5 { background: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        
+        .btn-fix {
+            background: linear-gradient(90deg, #8b5cf6, #6366f1);
+            color: #fff;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+        
+        .btn-fix:hover {
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+        
+        .btn-fix:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .loading-issues {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
         .status-message {
             margin-top: 12px;
             padding: 12px;
@@ -244,6 +392,16 @@
     <div class="container">
         <h1>🤖 Aider Agent</h1>
         
+        <div class="header-bar">
+            <div class="github-status" id="githubStatus">
+                <span class="dot disconnected"></span>
+                <span>GitHub: 未连接</span>
+            </div>
+            <div style="font-size: 0.75rem; color: rgba(255,255,255,0.5);">
+                仓库数: <span id="taskCount">0</span>
+            </div>
+        </div>
+        
         <div class="add-repo-section">
             <div class="input-group">
                 <input type="text" id="repoUrl" placeholder="输入 GitHub 仓库地址，例如：https://github.com/owner/repo">
@@ -264,6 +422,7 @@
     <script>
         const socket = io();
         const repos = {};
+        const repoIssues = {};  // 存储每个仓库的 Issues
         
         // 监听状态更新
         socket.on('status_update', (data) => {
@@ -282,6 +441,25 @@
                 updateOutput(data.id);
             }
         });
+        
+        // 获取系统状态
+        function fetchStatus() {
+            fetch('/api/status')
+            .then(res => res.json())
+            .then(status => {
+                const el = document.getElementById('githubStatus');
+                const countEl = document.getElementById('taskCount');
+                
+                if (status.github_connected) {
+                    el.innerHTML = `<span class="dot connected"></span><span>GitHub: ${status.github_user}</span>`;
+                } else {
+                    el.innerHTML = `<span class="dot disconnected"></span><span>GitHub: 未连接 (设置 GITHUB_TOKEN)</span>`;
+                }
+                
+                countEl.textContent = status.task_count;
+            })
+            .catch(() => {});
+        }
         
         function addRepo() {
             const input = document.getElementById('repoUrl');
@@ -302,6 +480,7 @@
                 repos[repo.id] = repo;
                 input.value = '';
                 renderRepos();
+                fetchStatus();
             })
             .catch(err => alert('添加失败: ' + err));
         }
@@ -324,7 +503,9 @@
             fetch(`/api/repos/${id}`, { method: 'DELETE' })
             .then(() => {
                 delete repos[id];
+                delete repoIssues[id];
                 renderRepos();
+                fetchStatus();
             });
         }
         
@@ -333,6 +514,87 @@
             if (el) {
                 el.style.display = el.style.display === 'none' ? 'block' : 'none';
             }
+        }
+        
+        function toggleIssues(id) {
+            const el = document.getElementById(`issues-${id}`);
+            if (el) {
+                const isHidden = el.style.display === 'none';
+                el.style.display = isHidden ? 'block' : 'none';
+                if (isHidden && !repoIssues[id]) {
+                    fetchIssues(id);
+                }
+            }
+        }
+        
+        function fetchIssues(id) {
+            const listEl = document.getElementById(`issue-list-${id}`);
+            if (listEl) {
+                listEl.innerHTML = '<div class="loading-issues"><span class="spinner"></span> 正在获取 Issues...</div>';
+            }
+            
+            fetch(`/api/repos/${id}/issues`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    listEl.innerHTML = `<div class="loading-issues">❌ ${data.error}</div>`;
+                    return;
+                }
+                repoIssues[id] = data.issues;
+                renderIssueList(id);
+            })
+            .catch(err => {
+                listEl.innerHTML = `<div class="loading-issues">❌ 获取失败</div>`;
+            });
+        }
+        
+        function renderIssueList(id) {
+            const listEl = document.getElementById(`issue-list-${id}`);
+            const issues = repoIssues[id] || [];
+            
+            if (issues.length === 0) {
+                listEl.innerHTML = '<div class="loading-issues">暂无可修复的 Issues</div>';
+                return;
+            }
+            
+            listEl.innerHTML = issues.map(issue => `
+                <div class="issue-item">
+                    <div class="issue-info">
+                        <div class="issue-title">
+                            <span class="difficulty-badge difficulty-${issue.difficulty_score || 3}">
+                                难度 ${issue.difficulty_score || '?'}
+                            </span>
+                            <a href="${issue.url}" target="_blank">#${issue.number}</a>
+                            ${issue.title}
+                        </div>
+                        <div class="issue-meta">${issue.recommendation || ''}</div>
+                        <div class="issue-labels">
+                            ${issue.labels.map(l => `<span class="issue-label">${l}</span>`).join('')}
+                        </div>
+                    </div>
+                    <button class="btn btn-fix" onclick="fixIssue('${id}', ${issue.number})" 
+                            ${repos[id]?.status === 'fixing' ? 'disabled' : ''}>
+                        🔧 修复
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        function fixIssue(repoId, issueNumber) {
+            if (!confirm(`确定要让 AI 修复 Issue #${issueNumber} 吗？`)) return;
+            
+            fetch(`/api/repos/${repoId}/issues/${issueNumber}/fix`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    alert('修复失败: ' + data.error);
+                    return;
+                }
+                repos[repoId].status = 'fixing';
+                repos[repoId].message = data.message;
+                renderRepos();
+            })
+            .catch(err => alert('请求失败: ' + err));
         }
         
         function updateOutput(id) {
@@ -374,6 +636,7 @@
                 const repo = repos[id];
                 const isRunning = ['cloning', 'reviewing', 'fixing'].includes(repo.status);
                 const hasOutput = repo.output && repo.output.length > 0;
+                const canShowIssues = ['cloned', 'completed', 'error'].includes(repo.status);
                 
                 return `
                     <div class="repo-card">
@@ -402,9 +665,29 @@
                                 </div>
                             </div>
                         ` : ''}
+                        ${canShowIssues ? `
+                            <div class="issues-section">
+                                <div class="issues-header">
+                                    <span class="issues-title">📋 Issues</span>
+                                    <button class="btn btn-small btn-primary" onclick="toggleIssues('${id}')">
+                                        ${repoIssues[id] ? '刷新' : '加载'} Issues
+                                    </button>
+                                </div>
+                                <div id="issues-${id}" style="display:${repoIssues[id] ? 'block' : 'none'};">
+                                    <div class="issue-list" id="issue-list-${id}">
+                                        ${repoIssues[id] ? '' : '<div class="loading-issues">点击上方按钮加载 Issues</div>'}
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             }).join('');
+            
+            // 重新渲染已加载的 Issues
+            Object.keys(repoIssues).forEach(id => {
+                if (repoIssues[id]) renderIssueList(id);
+            });
         }
         
         // Enter 键添加仓库
@@ -413,7 +696,11 @@
         });
         
         // 初始化
+        fetchStatus();
         renderRepos();
+        
+        // 定时刷新状态
+        setInterval(fetchStatus, 30000);
     </script>
 </body>
 </html>
