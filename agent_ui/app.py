@@ -155,9 +155,13 @@ def get_repo_issues(task_id):
         return jsonify({'error': str(e)}), 500
 
 
+# 存储进行中的修复任务
+fix_tasks = {}
+
+
 @app.route('/api/repos/<task_id>/issues/<int:issue_number>/fix', methods=['POST'])
 def fix_issue(task_id, issue_number):
-    """修复指定的 Issue"""
+    """启动 Issue 修复流程"""
     task = runner.get_task(task_id)
     if not task:
         return jsonify({'error': '任务不存在'}), 404
@@ -170,7 +174,6 @@ def fix_issue(task_id, issue_number):
         return jsonify({'error': '未配置 GITHUB_TOKEN'}), 400
     
     try:
-        # 获取 Issue 详情
         parts = task.repo_url.rstrip('/').rstrip('.git').split('/')
         owner, repo_name = parts[-2], parts[-1]
         
@@ -180,37 +183,72 @@ def fix_issue(task_id, issue_number):
         if not issue:
             return jsonify({'error': 'Issue 不存在'}), 404
         
-        # 更新状态
+        # 更新任务状态
         task.status = TaskStatus.FIXING
         task.message = f'正在修复 Issue #{issue_number}...'
+        task.output = ''
         on_status_update(task_id, task.status, task.message)
         
-        # 异步调用 Aider 修复
-        from agent_core.aider_wrapper import AiderWrapper
+        # 导入工作流
+        from agent_core.fix_workflow import FixWorkflow, FixStatus
         import threading
+        
+        fix_key = f"{task_id}_{issue_number}"
         
         def do_fix():
             try:
-                wrapper = AiderWrapper(task.local_path)
+                workflow = FixWorkflow(task.local_path, client)
                 
-                def _on_output(line):
+                def _on_status(status: FixStatus, msg: str):
+                    fix_tasks[fix_key] = {
+                        'status': status.value,
+                        'message': msg,
+                        'issue': issue
+                    }
+                    task.message = msg
+                    socketio.emit('fix_status', {
+                        'task_id': task_id,
+                        'issue_number': issue_number,
+                        'status': status.value,
+                        'message': msg
+                    })
+                
+                def _on_output(line: str):
                     task.output += line + '\n'
                     on_output(task_id, line)
                 
-                code, output = wrapper.fix_issue(
-                    issue['title'],
-                    issue['body'],
-                    on_output=_on_output
+                result = workflow.run_fix(
+                    issue=issue,
+                    on_status=_on_status,
+                    on_output=_on_output,
+                    auto_commit=False,  # 先不自动提交，等用户确认
+                    owner=owner,
+                    repo_name=repo_name
                 )
                 
-                if code == 0:
+                # 存储结果
+                fix_tasks[fix_key] = {
+                    'status': result.status.value,
+                    'message': task.message,
+                    'issue': issue,
+                    'branch': result.branch_name,
+                    'diff': result.diff,
+                    'success': result.success,
+                    'error': result.error
+                }
+                
+                if result.status == FixStatus.DIFF_READY:
+                    task.status = TaskStatus.FIXING
+                    task.message = f'修复完成，等待确认提交'
+                elif result.success:
                     task.status = TaskStatus.COMPLETED
                     task.message = f'Issue #{issue_number} 修复完成！'
                 else:
                     task.status = TaskStatus.ERROR
-                    task.message = f'修复失败'
+                    task.message = result.error or '修复失败'
                 
                 on_status_update(task_id, task.status, task.message)
+                runner.save()
                 
             except Exception as e:
                 task.status = TaskStatus.ERROR
@@ -224,6 +262,100 @@ def fix_issue(task_id, issue_number):
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/repos/<task_id>/issues/<int:issue_number>/diff', methods=['GET'])
+def get_fix_diff(task_id, issue_number):
+    """获取修复的 diff"""
+    fix_key = f"{task_id}_{issue_number}"
+    
+    if fix_key not in fix_tasks:
+        return jsonify({'error': '没有进行中的修复任务'}), 404
+    
+    fix_data = fix_tasks[fix_key]
+    return jsonify({
+        'diff': fix_data.get('diff', ''),
+        'branch': fix_data.get('branch', ''),
+        'status': fix_data.get('status', ''),
+        'message': fix_data.get('message', '')
+    })
+
+
+@app.route('/api/repos/<task_id>/issues/<int:issue_number>/commit', methods=['POST'])
+def commit_fix(task_id, issue_number):
+    """确认提交修复"""
+    task = runner.get_task(task_id)
+    if not task:
+        return jsonify({'error': '任务不存在'}), 404
+    
+    fix_key = f"{task_id}_{issue_number}"
+    if fix_key not in fix_tasks:
+        return jsonify({'error': '没有待提交的修复'}), 404
+    
+    fix_data = fix_tasks[fix_key]
+    issue = fix_data.get('issue', {})
+    
+    client = get_github_client()
+    parts = task.repo_url.rstrip('/').rstrip('.git').split('/')
+    owner, repo_name = parts[-2], parts[-1]
+    
+    from agent_core.fix_workflow import FixWorkflow, FixStatus
+    import threading
+    
+    def do_commit():
+        try:
+            workflow = FixWorkflow(task.local_path, client)
+            
+            # 提交
+            task.message = '正在提交...'
+            on_status_update(task_id, task.status, task.message)
+            
+            success, msg = workflow.commit_changes(issue['number'], issue['title'])
+            if not success and "没有需要提交的更改" not in msg:
+                raise Exception(msg)
+            
+            task.output += f"\n✓ 已提交: {msg}\n"
+            on_output(task_id, f"✓ 已提交: {msg}")
+            
+            # 推送
+            task.message = '正在推送...'
+            on_status_update(task_id, task.status, task.message)
+            
+            branch = fix_data.get('branch', f"fix/issue-{issue['number']}")
+            success, msg = workflow.push_branch(branch)
+            if not success:
+                raise Exception(msg)
+            
+            task.output += f"✓ {msg}\n"
+            on_output(task_id, f"✓ {msg}")
+            
+            # 创建 PR
+            task.message = '正在创建 PR...'
+            on_status_update(task_id, task.status, task.message)
+            
+            success, pr_url = workflow.create_pr(owner, repo_name, issue['number'], issue['title'], branch)
+            if success:
+                task.output += f"✓ PR 已创建: {pr_url}\n"
+                on_output(task_id, f"✓ PR 已创建: {pr_url}")
+                fix_data['pr_url'] = pr_url
+            else:
+                task.output += f"⚠ 创建 PR 失败: {pr_url}\n"
+                on_output(task_id, f"⚠ 创建 PR 失败: {pr_url}")
+            
+            task.status = TaskStatus.COMPLETED
+            task.message = f'Issue #{issue["number"]} 已提交 PR！'
+            on_status_update(task_id, task.status, task.message)
+            runner.save()
+            
+        except Exception as e:
+            task.status = TaskStatus.ERROR
+            task.message = f'提交失败: {str(e)}'
+            on_status_update(task_id, task.status, task.message)
+    
+    thread = threading.Thread(target=do_commit, daemon=True)
+    thread.start()
+    
+    return jsonify({'message': '正在提交并创建 PR...'})
 
 
 @app.route('/api/status', methods=['GET'])
