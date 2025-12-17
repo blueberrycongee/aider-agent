@@ -250,8 +250,8 @@ def get_status():
 
 if __name__ == '__main__':
     print("=" * 50)
-    print("🤖 Aider Agent UI 启动中...")
-    print(f"📁 工作目录: {runner.work_dir}")
-    print("🌐 打开浏览器访问: http://localhost:5000")
+    print("Aider Agent UI 启动中...")
+    print(f"工作目录: {runner.work_dir}")
+    print("打开浏览器访问: http://localhost:5000")
     print("=" * 50)
     socketio.run(app, debug=True, port=5000)
