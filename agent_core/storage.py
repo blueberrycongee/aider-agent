@@ -86,7 +86,14 @@ class Storage:
                 return default
     
     def delete(self, name: str) -> bool:
-        """删除数据文件"""
+        """删除数据文件
+        
+        Args:
+            name: 数据名称
+            
+        Returns:
+            是否成功
+        """
         file_path = self._get_file_path(name)
         
         with self._lock:
